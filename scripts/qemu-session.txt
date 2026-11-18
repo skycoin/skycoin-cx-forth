@@ -1,0 +1,15 @@
+2 3 + .
+7 6 * 1 - .
+: SQ DUP * ; 9 SQ .
+: FACT DUP 1 > IF DUP 1 - FACT * THEN ; 10 FACT .
+TRUE NULL AND .
+MAYBE TNOT T.
+TRUE MAYBE OR T.
+FALSE TNOT T.
+1 0 /
+CX-RUN hello
+CX-RUN fib
+CX-RUN loop
+CX-RUN ternary
+CX-RUN nope
+9 SQ .

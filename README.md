@@ -32,8 +32,22 @@ go test ./...
 tinygo build -target=esp32c3-generic ./cmd/cxforth-esp32
 ```
 
-The ESP32-C3 build is checked. The classic (Xtensa) ESP32 needs a TinyGo whose
-LLVM includes the Xtensa backend. Nothing has run on hardware yet.
+## ESP32 in QEMU
+
+`scripts/qemu-esp32.sh esp32` and `scripts/qemu-esp32.sh esp32c3` build the
+REPL and boot it in [Espressif's QEMU](https://github.com/espressif/qemu/releases)
+with UART0 on the terminal. Add `check` to type `scripts/qemu-session.txt`
+and check the replies. The classic ESP32 needs a TinyGo whose LLVM includes
+the Xtensa backend with the esp32 CPU.
+
+Both chips pass that session in QEMU 9.2.2 (esp_develop_9.2.2_20260417) with
+TinyGo 0.45.0-dev on LLVM 22. It covers arithmetic, colon definitions,
+recursion, the ternary words, an error, and all four CX IR examples, with
+the same output as the host REPL.
+
+Not tested on real hardware yet. The C3 under QEMU uses UART0 (`-serial=uart`)
+because QEMU has no USB-Serial-JTAG console, so the default C3 build that
+talks over USB has not run anywhere.
 
 ## License
 

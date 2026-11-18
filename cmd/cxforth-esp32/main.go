@@ -29,8 +29,11 @@ type serial interface {
 
 func main() {
 	var uart serial = machine.Serial
-	machine.Serial.Configure(machine.UARTConfig{BaudRate: 115200})
+	err := machine.Serial.Configure(uartConfig)
 	vm := forth.New(uart)
+	if err != nil {
+		uart.Write([]byte("\r\nserial configure: " + err.Error()))
+	}
 
 	uart.Write([]byte("\r\nskycoin-cx-forth\r\nexamples: "))
 	for _, ex := range cxir.Examples {
