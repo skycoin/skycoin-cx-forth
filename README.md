@@ -32,6 +32,9 @@ go test ./...
 tinygo build -target=esp32c3-generic ./cmd/cxforth-esp32
 ```
 
+Try the REPL in the browser at https://skycoin.github.io/skycoin-cx-forth/
+(`scripts/build-pages.sh` builds it from `cmd/cxforth-wasm`).
+
 ## ESP32 in QEMU
 
 `scripts/qemu-esp32.sh esp32` and `scripts/qemu-esp32.sh esp32c3` build the

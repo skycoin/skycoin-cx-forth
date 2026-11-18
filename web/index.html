@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>skycoin-cx-forth</title>
+</head>
+<body>
+<pre id="log">loading cxforth.wasm ...
+</pre>
+<form id="form"><pre>&gt; <textarea id="line" rows="1" cols="60" autocomplete="off" spellcheck="false" disabled></textarea></pre></form>
+<pre>try: 2 3 + .   TRUE NULL AND .   : SQ DUP * ; 9 SQ .   CX-RUN fib
+source: <a href="https://github.com/skycoin/skycoin-cx-forth">github.com/skycoin/skycoin-cx-forth</a></pre>
+<script src="wasm_exec.js"></script>
+<script>
+const log = document.getElementById("log");
+const line = document.getElementById("line");
+const past = [];
+let pos = 0;
+
+function print(s) {
+  log.textContent += s;
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+document.getElementById("form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const src = line.value;
+  line.value = "";
+  if (src.trim() !== "") past.push(src);
+  pos = past.length;
+  print("> " + src + "\n" + cxforthEval(src) + "\n");
+});
+
+line.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    document.getElementById("form").requestSubmit();
+    return;
+  }
+  if (e.key === "ArrowUp" && pos > 0) {
+    line.value = past[--pos];
+    e.preventDefault();
+  } else if (e.key === "ArrowDown" && pos < past.length) {
+    line.value = ++pos < past.length ? past[pos] : "";
+    e.preventDefault();
+  }
+});
+
+const go = new Go();
+WebAssembly.instantiateStreaming(fetch("cxforth.wasm"), go.importObject).then((r) => {
+  go.run(r.instance);
+  log.textContent = cxforthBanner + "\n";
+  line.disabled = false;
+  line.focus();
+}).catch((err) => {
+  print("load failed: " + err + "\n");
+});
+</script>
+</body>
+</html>
