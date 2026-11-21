@@ -13,6 +13,7 @@ var compilePrims = []prim{
 	{"\\", func(vm *VM) { vm.parseTo('\n') }, true},
 	{".\"", primDotQuote, true},
 	{"S\"", primSQuote, true},
+	{"S\\\"", primSQuoteEsc, true},
 
 	{"IF", func(vm *VM) {
 		vm.needCompile()
