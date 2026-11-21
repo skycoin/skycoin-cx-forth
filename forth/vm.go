@@ -15,6 +15,7 @@ const (
 	MemSize    = 2048
 	CodeSize   = 4096
 	WordsMax   = 512
+	StringsGC  = 256 // string pool length that first triggers a compaction
 )
 
 // Error is a VM error. It is a plain type so no fmt is needed.
@@ -34,6 +35,7 @@ const (
 	opDo
 	opLoop
 	opPlusLoop
+	opHost // A is the dictionary index of a host word
 )
 
 // Instr is one threaded code instruction.
@@ -48,6 +50,7 @@ type Word struct {
 	Prim int16 // primitive index, or -1 for a colon definition
 	Imm  bool
 	XT   int32
+	Host func(*VM) // set for words the host defines
 }
 
 type ctl struct {
@@ -100,11 +103,13 @@ type VM struct {
 	labels    map[int32]int32
 	lfix      []labelFix
 	saveHere  int32
+
+	gcAt int // string pool length that triggers the next compaction
 }
 
 // New returns a VM writing output to out.
 func New(out io.Writer) *VM {
-	vm := &VM{out: out, base: 10, words: make([]Word, 0, 128), obuf: make([]byte, 0, 64)}
+	vm := &VM{out: out, base: 10, words: make([]Word, 0, 128), obuf: make([]byte, 0, 64), gcAt: StringsGC}
 	for i := range prims {
 		vm.words = append(vm.words, Word{Name: prims[i].name, Prim: int16(i), Imm: prims[i].imm})
 	}
@@ -234,6 +239,9 @@ func (vm *VM) run(xt int32) {
 			vm.fail("bad instruction pointer")
 			break
 		}
+		if len(vm.strs) >= vm.gcAt {
+			vm.collect()
+		}
 		in := vm.code[ip]
 		ip++
 		switch in.Op {
@@ -249,6 +257,8 @@ func (vm *VM) run(xt int32) {
 			ip = in.A
 		case opPrim:
 			prims[in.A].fn(vm)
+		case opHost:
+			vm.words[in.A].Host(vm)
 		case opBranch:
 			ip = in.A
 		case opBranch0:
@@ -295,6 +305,10 @@ func (vm *VM) run(xt int32) {
 
 func (vm *VM) execute(i int) {
 	w := &vm.words[i]
+	if w.Host != nil {
+		w.Host(vm)
+		return
+	}
 	if w.Prim >= 0 {
 		prims[w.Prim].fn(vm)
 		return
@@ -347,6 +361,9 @@ func (vm *VM) number(tok string) (Cell, bool) {
 func (vm *VM) Interpret(src string) error {
 	vm.src, vm.pos, vm.err = src, 0, nil
 	for vm.err == nil {
+		if len(vm.strs) >= vm.gcAt {
+			vm.collect()
+		}
 		tok := vm.next()
 		if tok == "" {
 			break
@@ -355,7 +372,9 @@ func (vm *VM) Interpret(src string) error {
 		if i >= 0 {
 			w := vm.words[i]
 			if vm.compiling && !w.Imm {
-				if w.Prim >= 0 {
+				if w.Host != nil {
+					vm.emit(opHost, int32(i))
+				} else if w.Prim >= 0 {
 					vm.emit(opPrim, int32(w.Prim))
 				} else {
 					vm.emit(opCall, w.XT)
@@ -418,7 +437,7 @@ func (vm *VM) Mark() Mark {
 func (vm *VM) Restore(m Mark) {
 	vm.words = vm.words[:m.words]
 	vm.lits = vm.lits[:m.lits]
-	vm.strs = vm.strs[:m.strs]
+	vm.strs = vm.strs[:min(m.strs, len(vm.strs))]
 	vm.here, vm.dp = m.here, m.dp
 	vm.reset()
 }

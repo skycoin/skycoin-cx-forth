@@ -73,4 +73,17 @@
 // n FRAME opens n zeroed local slots, i L@ and i L! read and write them and
 // UNFRAME closes the frame. LABEL n, GOTO n and JMP3 t f n give numbered
 // labels inside one definition, which is what jump based IR needs.
+//
+// # Host words
+//
+// VM.Define adds a word that Go code implements, with PushString, PopString
+// and PopInt for its arguments. This is how a program reaches the network,
+// clocks or pins, none of which the VM touches itself.
+//
+// # Strings
+//
+// S\" takes the escapes \" \\ \n \r and \t. + joins two strings, = and the
+// other comparisons compare their text, and >STR formats any cell. Strings
+// live in a pool that is compacted between instructions once it grows, so a
+// loop that makes strings forever runs in bounded memory.
 package forth

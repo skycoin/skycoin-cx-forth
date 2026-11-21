@@ -35,7 +35,7 @@ func TestTranslateErrors(t *testing.T) {
 		{main(Goto(5)), "jump target out of range"},
 		{main(Call("nope", nil)), "undefined function nope"},
 		{main(Op1(OpAdd, Int32(1), Int32(1), Int32(1))), "assign to a literal"},
-		{main(Print(Str(`a"b`))), "quote"},
+		{main(Host("a b", nil)), "bad host word"},
 		{&Program{Functions: []Function{
 			{Name: "main", Exprs: []Expr{Call("a", nil)}},
 			{Name: "a", Exprs: []Expr{Call("b", nil)}},
@@ -60,5 +60,43 @@ func TestRuntimeError(t *testing.T) {
 	err := Run(p, nil)
 	if _, ok := err.(*forth.Error); !ok || !strings.Contains(err.Error(), "division by zero") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// Lines resolves labels, OpHost reaches a host word and string literals
+// may hold quotes and newlines.
+func TestHostLinesStrings(t *testing.T) {
+	var l Lines
+	n, s, c := Var("n", I32), Var("s", STR), Var("c", BOOL)
+	l.Add(Op1(OpIdentity, s, Str("{\"a\":\n")))
+	l.Label("loop")
+	l.Add(Op1(OpLt, c, n, Int32(3)))
+	l.If(c, "", "done")
+	l.Add(Host("tick", []Arg{n}, n))
+	l.Goto("loop")
+	l.Label("done")
+	l.Add(Print(s), Print(n))
+	exprs, err := l.Exprs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &Program{Functions: []Function{{Name: "main", Locals: []Arg{n, s, c}, Exprs: exprs}}}
+	var b strings.Builder
+	vm := forth.New(&b)
+	vm.Define("tick", func(vm *forth.VM) { vm.Push(forth.Int(vm.PopInt() + 1)) })
+	if err := Load(vm, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := vm.Interpret(WordName("main")); err != nil {
+		t.Fatal(err)
+	}
+	if want := "{\"a\":\n\n3\n"; b.String() != want {
+		t.Fatalf("got %q want %q", b.String(), want)
+	}
+
+	var bad Lines
+	bad.Goto("nowhere")
+	if _, err := bad.Exprs(); err == nil {
+		t.Fatal("undefined label accepted")
 	}
 }

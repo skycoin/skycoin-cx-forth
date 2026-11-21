@@ -138,6 +138,7 @@ func init() {
 		{".", func(vm *VM) { vm.print(vm.Pop(), ' ') }, false},
 		{"PRINTLN", func(vm *VM) { vm.print(vm.Pop(), '\n') }, false},
 		{"TYPE", func(vm *VM) { vm.print(vm.Pop(), 0) }, false},
+		{">STR", func(vm *VM) { vm.Push(vm.intern(string(vm.appendCell(nil, vm.Pop())))) }, false},
 		{"CR", func(vm *VM) { vm.writeString("\n") }, false},
 		{"SPACE", func(vm *VM) { vm.writeString(" ") }, false},
 		{"SPACES", func(vm *VM) {

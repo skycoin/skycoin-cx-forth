@@ -20,6 +20,10 @@
 // true, false and null, and an Arg literal may be Null for any type. A JMP
 // whose condition is null goes to NullLines when HasNull is set, otherwise
 // it takes the ElseLines path.
+//
+// OpHost calls a word the host program defines, such as net.request. It
+// is how CX code reaches anything outside the VM, the way CX itself calls
+// its native functions.
 package cxir
 
 // Type is a CX value type.
@@ -63,6 +67,7 @@ const (
 	OpPrint                  // CX's typed print builtins such as i32.print, registered in cx/opcodes/opcodes_init.go
 	OpCall                   // call of a user function, Expr.Call names it
 	OpReturn                 // leave the function, outputs hold the results
+	OpHost                   // extension, call of a word the host defines, Expr.Call names it
 )
 
 // Arg is a variable reference or a literal.
@@ -150,6 +155,11 @@ func Print(a Arg) Expr { return Expr{Op: OpPrint, Inputs: []Arg{a}} }
 // Call builds outs = fn(ins).
 func Call(fn string, outs []Arg, ins ...Arg) Expr {
 	return Expr{Op: OpCall, Call: fn, Inputs: ins, Outputs: outs}
+}
+
+// Host builds outs = word(ins) for a word the host defines with forth.VM.Define.
+func Host(word string, outs []Arg, ins ...Arg) Expr {
+	return Expr{Op: OpHost, Call: word, Inputs: ins, Outputs: outs}
 }
 
 // Return builds a return.

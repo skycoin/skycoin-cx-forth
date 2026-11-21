@@ -169,10 +169,7 @@ func (c *fnCtx) push(a Arg) error {
 			c.w("FALSE ")
 		}
 	case STR:
-		if strings.ContainsAny(a.S, "\"\n") {
-			return errors.New("string literal may not hold a quote or newline")
-		}
-		c.w(`S" `, a.S, `" `)
+		c.str(a.S)
 	default:
 		return errors.New("literal of unknown type")
 	}
@@ -262,13 +259,19 @@ func (c *fnCtx) expr(line int, e *Expr) error {
 		}
 		c.w("PRINTLN")
 		return nil
-	case OpCall:
+	case OpCall, OpHost:
 		for _, a := range e.Inputs {
 			if err := c.push(a); err != nil {
 				return err
 			}
 		}
-		c.w(WordName(e.Call), " ")
+		w := e.Call
+		if e.Op == OpCall {
+			w = WordName(w)
+		} else if w == "" || strings.ContainsAny(w, " \t\n\r") {
+			return errors.New("bad host word " + strconv.Quote(w))
+		}
+		c.w(w, " ")
 		for i := len(e.Outputs) - 1; i >= 0; i-- {
 			if err := c.store(e.Outputs[i]); err != nil {
 				return err
@@ -290,4 +293,29 @@ func (c *fnCtx) expr(line int, e *Expr) error {
 	}
 	c.w(opWords[e.Op], narrow(e.Outputs[0].Type))
 	return c.store(e.Outputs[0])
+}
+
+// str pushes a string literal. Text with a quote, backslash or control
+// character goes through S\" and its escapes.
+func (c *fnCtx) str(s string) {
+	if !strings.ContainsAny(s, "\"\\\n\r\t") {
+		c.w(`S" `, s, `" `)
+		return
+	}
+	b := make([]byte, 0, len(s)+8)
+	for i := 0; i < len(s); i++ {
+		switch ch := s[i]; ch {
+		case '"', '\\':
+			b = append(b, '\\', ch)
+		case '\n':
+			b = append(b, '\\', 'n')
+		case '\r':
+			b = append(b, '\\', 'r')
+		case '\t':
+			b = append(b, '\\', 't')
+		default:
+			b = append(b, ch)
+		}
+	}
+	c.w(`S\" `, string(b), `" `)
 }
