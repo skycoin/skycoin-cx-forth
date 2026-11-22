@@ -60,6 +60,14 @@ go run ./cmd/cxforth-server -mock -say 'turn the led on' -say 'remember color bl
 
 For real services, run the server with `TG_TOKEN`, `LLM_URL` and `LLM_KEY` set.
 
+On a board the datagrams leave framed on the UART, and `cmd/cxforth-relay`
+forwards them to the server as UDP. `AGENT <key>` at the board's REPL starts
+the agent. `scripts/qemu-agent.sh esp32` or `esp32c3` builds the firmware,
+boots it in QEMU and runs a few messages through the mock server. Both chips
+answer every message there, a tool call in about 185 ms round trip. QEMU has
+no network device TinyGo can drive, hence the UART. Not tried on real
+hardware.
+
 ## ESP32 in QEMU
 
 `scripts/qemu-esp32.sh esp32` and `scripts/qemu-esp32.sh esp32c3` build the

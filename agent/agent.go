@@ -78,10 +78,13 @@ func request(st, body, method, path, payload cxir.Arg) cxir.Expr {
 	return hcall("net.request", []cxir.Arg{st, body}, method, path, payload)
 }
 
+// builders makes the functions, callees first.
+var builders = []func() (cxir.Function, error){toolFn, askFn, handleFn, mainFn}
+
 // Program returns the agent. Its entry point is main.
 func Program() (*cxir.Program, error) {
 	var fns []cxir.Function
-	for _, f := range []func() (cxir.Function, error){mainFn, handleFn, askFn, toolFn} {
+	for _, f := range builders {
 		fn, err := f()
 		if err != nil {
 			return nil, err
@@ -340,9 +343,15 @@ func toolFn() (cxir.Function, error) {
 // with vm.Interpret(cxir.WordName("main")).
 func Load(vm *forth.VM, e *host.Env) error {
 	host.Install(vm, e)
-	p, err := Program()
-	if err != nil {
-		return err
+	// One function at a time keeps the peak small on a board.
+	for _, build := range builders {
+		f, err := build()
+		if err != nil {
+			return err
+		}
+		if err := cxir.LoadFunc(vm, &f); err != nil {
+			return err
+		}
 	}
-	return cxir.Load(vm, p)
+	return nil
 }

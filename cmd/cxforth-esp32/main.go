@@ -6,6 +6,8 @@
 //
 // Type at 115200 baud. Backspace edits the line, Enter runs it.
 // CX-RUN <name> runs one of the compiled in CX IR examples in a fresh VM.
+// AGENT <key> runs the chat agent through cxforth-relay, SEAL-BENCH times
+// the datagram cipher.
 package main
 
 import (
@@ -30,7 +32,9 @@ type serial interface {
 func main() {
 	var uart serial = machine.Serial
 	err := machine.Serial.Configure(uartConfig)
-	vm := forth.New(uart)
+	// The agent needs no data memory and about 1000 instructions of code, and
+	// the heap left over is what it runs in.
+	vm := forth.NewSized(uart, forth.Sizes{Mem: 256, Locals: 256, Code: 2048})
 	if err != nil {
 		uart.Write([]byte("\r\nserial configure: " + err.Error()))
 	}
@@ -71,6 +75,14 @@ func main() {
 }
 
 func run(vm *forth.VM, uart serial, src string) {
+	if len(src) > 6 && src[:6] == "AGENT " {
+		report(uart, runAgent(vm, uart, src[6:]))
+		return
+	}
+	if src == "SEAL-BENCH" {
+		sealBench(uart)
+		return
+	}
 	if len(src) > 7 && src[:7] == "CX-RUN " {
 		name := src[7:]
 		for i := range cxir.Examples {
