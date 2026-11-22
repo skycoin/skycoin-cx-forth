@@ -112,12 +112,18 @@ type VM struct {
 
 	registers     [RegisterCount]Cell
 	registerFocus uint8
+
+	structCells        []Cell
+	structTop          int
+	structTypes        []structTypeEntry
+	structDefineOpen   bool
+	structDefineFields []AtomicType
 }
 
-// Sizes sets the fixed space of a VM, in cells for the stacks, locals and
-// data memory and in instructions for code. A zero field takes the default.
+// Sizes sets the fixed space of a VM, in cells for the stacks, locals, data
+// memory and struct space and in instructions for code. A zero field takes the default.
 type Sizes struct {
-	Stack, RStack, Locals, Frames, Mem, Code int
+	Stack, RStack, Locals, Frames, Mem, Code, StructCells int
 }
 
 // New returns a VM with the default sizes writing output to out.
@@ -132,16 +138,18 @@ func NewSized(out io.Writer, s Sizes) *VM {
 		return def
 	}
 	vm := &VM{out: out, base: 10, words: make([]Word, 0, 128), obuf: make([]byte, 0, 64), gcAt: StringsGC, gcSize: StringsGCBytes,
-		ds:   make([]Cell, or(s.Stack, StackSize)),
-		rs:   make([]Cell, or(s.RStack, RStackSize)),
-		ls:   make([]Cell, or(s.Locals, LocalsSize)),
-		fs:   make([]int32, or(s.Frames, FramesSize)),
-		mem:  make([]Cell, or(s.Mem, MemSize)),
-		code: make([]Instr, or(s.Code, CodeSize)),
+		ds:          make([]Cell, or(s.Stack, StackSize)),
+		rs:          make([]Cell, or(s.RStack, RStackSize)),
+		ls:          make([]Cell, or(s.Locals, LocalsSize)),
+		fs:          make([]int32, or(s.Frames, FramesSize)),
+		mem:         make([]Cell, or(s.Mem, MemSize)),
+		code:        make([]Instr, or(s.Code, CodeSize)),
+		structCells: make([]Cell, or(s.StructCells, StructCellsSize)),
 	}
 	for i := range prims {
 		vm.words = append(vm.words, Word{Name: prims[i].name, Prim: int16(i), Imm: prims[i].imm})
 	}
+	vm.structTypeBuiltInDefine()
 	return vm
 }
 
@@ -438,6 +446,7 @@ func (vm *VM) reset() {
 		vm.here = vm.saveHere
 		vm.compiling = false
 	}
+	vm.structDefineOpen = false
 	vm.cstack = vm.cstack[:0]
 }
 
@@ -452,14 +461,14 @@ func Run(src string) (string, error) {
 
 // Mark records the dictionary, code, data and literal pools, like MARKER.
 type Mark struct {
-	words, lits, strs int
-	here              int32
-	dp                int64
+	words, lits, strs, structTypes, structTop int
+	here                                      int32
+	dp                                        int64
 }
 
 // Mark returns the current allocation state.
 func (vm *VM) Mark() Mark {
-	return Mark{len(vm.words), len(vm.lits), len(vm.strs), vm.here, vm.dp}
+	return Mark{len(vm.words), len(vm.lits), len(vm.strs), len(vm.structTypes), vm.structTop, vm.here, vm.dp}
 }
 
 // Restore forgets everything defined since m was taken.
@@ -468,5 +477,7 @@ func (vm *VM) Restore(m Mark) {
 	vm.lits = vm.lits[:m.lits]
 	vm.strs = vm.strs[:min(m.strs, len(vm.strs))]
 	vm.here, vm.dp = m.here, m.dp
+	vm.structTypes = vm.structTypes[:m.structTypes]
+	vm.structTop = m.structTop
 	vm.reset()
 }

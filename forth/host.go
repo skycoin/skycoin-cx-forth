@@ -54,7 +54,7 @@ func (vm *VM) collect() {
 	for i := range live {
 		live[i] = -1
 	}
-	roots := [][]Cell{vm.ds[:vm.sp], vm.rs[:vm.rp], vm.ls[:vm.lp], vm.mem[:vm.dp], vm.lits, vm.registers[:]}
+	roots := [][]Cell{vm.ds[:vm.sp], vm.rs[:vm.rp], vm.ls[:vm.lp], vm.mem[:vm.dp], vm.lits, vm.registers[:], vm.structCells[:vm.structTop]}
 	for _, r := range roots {
 		for _, c := range r {
 			if c.T == TStr && c.V >= 0 && int(c.V) < len(live) {
