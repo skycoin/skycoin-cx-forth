@@ -171,6 +171,7 @@ func init() {
 	}
 	prims = append(prims, atomicTypePrims()...)
 	prims = append(prims, registerPrims()...)
+	prims = append(prims, structPrims()...)
 	prims = append(prims, compilePrims...)
 }
 

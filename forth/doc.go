@@ -42,6 +42,38 @@
 // focus type. The CX IR translator checks types before it emits any Forth,
 // so in translated code the run time checks are asserts.
 //
+// # Structs
+//
+// A struct type is a list of ordinals, each with an AtomicType. A struct
+// instance lives in the struct space, and a StructRef cell holds its struct
+// type id and index, so a ref fits in one register or slot. The zero ref is
+// nil. The struct table is itself made of built-in structs:
+//
+//	StructRef             id 0  ( Int64 struct type id, Int64 index )
+//	StructTypeDescriptor  id 1  ( Int64 ordinal count, StructRef first StructOrdinal )
+//	StructOrdinal         id 2  ( Int64 atomic type, StructRef next StructOrdinal or nil )
+//
+// Each struct type has a StructTypeDescriptor and a chain of StructOrdinal
+// instances. User types get ids from 3 up.
+//
+//	StructDefineStart        ( -- )
+//	StructDefineFieldAdd     ( t -- )    adds the next ordinal
+//	StructDefineEnd          ( -- id )   submits the struct type
+//	StructInstanceNew        ( id -- ref )  fields start at their zero
+//	StructRefTypeID          ( ref -- id )
+//	StructTypeDescriptorRef  ( id -- ref )
+//	StructTypeCount          ( -- n )
+//	StructTypeIDStructRef, StructTypeIDStructTypeDescriptor,
+//	StructTypeIDStructOrdinal  ( -- id )
+//
+// For example struct abd { int x; int y; int y } has three ordinals:
+//
+//	StructDefineStart AtomicTypeInt32 StructDefineFieldAdd
+//	AtomicTypeInt32 StructDefineFieldAdd AtomicTypeInt32 StructDefineFieldAdd
+//	StructDefineEnd CONSTANT abd
+//
+// Mark and Restore forget struct types and instances made after the mark.
+//
 // Word names are matched without regard to case and keep the case they were
 // defined with.
 //
