@@ -32,6 +32,11 @@ AtomicTypeInt32 RegisterTypeSet
 RegisterFocusPushToStack .    \ -2147483648
 ```
 
+Struct types are defined with StructDefineStart, StructDefineFieldAdd and
+StructDefineEnd, and a struct cursor walks an instance field by field. The
+struct table itself is made of built-in structs. CX IR structs translate onto
+these words.
+
 New words follow the naming rule in AGENTS.md. See `forth/doc.go` for the
 word list.
 

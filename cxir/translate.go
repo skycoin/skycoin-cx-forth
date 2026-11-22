@@ -12,6 +12,8 @@ func WordName(fn string) string { return "CX-" + fn }
 // Translate turns p into Forth source. Each CX function becomes one colon
 // definition with a frame of locals and a numbered label per IR line.
 // Running the word CX-main runs the program.
+// Each struct becomes a VM struct type whose id is the constant
+// StructWordName(name), and a struct variable holds a StructRef.
 //
 // It checks types as it goes. The operands of an operator share one type
 // that the operator takes, the output has the type it gives, a jump tests a
@@ -21,10 +23,16 @@ func Translate(p *Program) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sigs := typeSignatures(p)
+	index, err := programIndexBuild(p)
+	if err != nil {
+		return "", err
+	}
 	var b strings.Builder
+	for i := range p.Structs {
+		structDefinitionWrite(&b, &p.Structs[i])
+	}
 	for _, f := range order {
-		if err := translateFunc(&b, f, sigs); err != nil {
+		if err := translateFunc(&b, f, index); err != nil {
 			return "", errors.New(f.Name + ": " + err.Error())
 		}
 	}
@@ -77,36 +85,69 @@ func callOrder(p *Program) ([]*Function, error) {
 }
 
 type fnCtx struct {
-	b     *strings.Builder
-	slots map[string]int
-	types map[string]Type
-	sigs  map[string]*Function
-	n     int
+	b           *strings.Builder
+	slots       map[string]int
+	types       map[string]Type
+	index       *programIndex
+	structNames map[string]string // the struct of each struct variable
+	n           int
 }
 
-// translateFunc writes f. With sigs nil, calls are not type checked.
-func translateFunc(b *strings.Builder, f *Function, sigs map[string]*Function) error {
-	c := &fnCtx{b: b, slots: map[string]int{}, types: map[string]Type{}, sigs: sigs, n: len(f.Exprs)}
+// translateFunc writes f. With index nil, calls are not type checked and
+// struct variables are not allowed.
+func translateFunc(b *strings.Builder, f *Function, index *programIndex) error {
+	c := &fnCtx{b: b, slots: map[string]int{}, types: map[string]Type{}, index: index, structNames: map[string]string{}, n: len(f.Exprs)}
 	vars := make([]Arg, 0, len(f.Inputs)+len(f.Outputs)+len(f.Locals))
 	vars = append(vars, f.Inputs...)
 	vars = append(vars, f.Outputs...)
 	vars = append(vars, f.Locals...)
 	for i, v := range vars {
-		if _, dup := c.slots[v.Name]; dup || v.Name == "" {
+		if _, dup := c.slots[v.Name]; dup || v.Name == "" || strings.Contains(v.Name, ".") {
 			return errors.New("bad or duplicate variable " + strconv.Quote(v.Name))
 		}
 		if _, ok := v.Type.AtomicType(); !ok {
 			return errors.New("variable " + v.Name + " has no type")
 		}
+		if v.Type == TypeStruct {
+			if c.index.structDefinition(v.structName()) == nil {
+				return errors.New("variable " + v.Name + " has undefined struct " + strconv.Quote(v.structName()))
+			}
+			c.structNames[v.Name] = v.structName()
+		}
 		c.slots[v.Name] = i
 		c.types[v.Name] = v.Type
 	}
 
-	c.w(": ", WordName(f.Name), "\n  ", strconv.Itoa(len(vars)), " FRAME")
+	// A function that makes struct instances and returns none frees them on
+	// return, from the struct space top it keeps in an extra slot.
+	release := -1
+	for _, v := range vars[len(f.Inputs):] {
+		if v.Type == TypeStruct {
+			release = len(vars)
+		}
+	}
+	for _, v := range f.Outputs {
+		if v.Type == TypeStruct {
+			release = -1
+		}
+	}
+	frame := len(vars)
+	if release >= 0 {
+		frame++
+	}
+
+	c.w(": ", WordName(f.Name), "\n  ", strconv.Itoa(frame), " FRAME")
 	for i := len(f.Inputs) - 1; i >= 0; i-- {
 		c.w(" ", strconv.Itoa(i), " L!")
 	}
+	if release >= 0 {
+		c.w(" StructSpaceTop ", strconv.Itoa(release), " L!")
+	}
 	for _, v := range vars[len(f.Inputs):] {
+		if v.Type == TypeStruct {
+			c.w(" ", StructWordName(v.structName()), " StructInstanceNew ", strconv.Itoa(c.slots[v.Name]), " L!")
+			continue
+		}
 		if z := zero(v.Type); z != "" {
 			c.w(" ", z, " ", strconv.Itoa(c.slots[v.Name]), " L!")
 		}
@@ -120,6 +161,9 @@ func translateFunc(b *strings.Builder, f *Function, sigs map[string]*Function) e
 		c.w("\n")
 	}
 	c.w("  LABEL ", strconv.Itoa(c.n))
+	if release >= 0 {
+		c.w(" ", strconv.Itoa(release), " L@ StructSpaceRelease")
+	}
 	for _, v := range f.Outputs {
 		c.w(" ", strconv.Itoa(c.slots[v.Name]), " L@")
 	}
@@ -153,6 +197,12 @@ func (c *fnCtx) push(a Arg) error {
 	if !a.Lit {
 		if _, err := c.typeOfArg(a); err != nil {
 			return err
+		}
+		if a.structField() != "" {
+			_, t, _ := c.structFieldOrdinal(a)
+			c.structFieldSeek(a)
+			c.w("StructCursorFieldGet ", structFieldLoadConvert(t))
+			return nil
 		}
 		c.w(strconv.Itoa(c.slots[a.Name]), " L@ ")
 		return nil
@@ -193,6 +243,13 @@ func (c *fnCtx) store(a Arg) error {
 	}
 	if _, err := c.typeOfArg(a); err != nil {
 		return err
+	}
+	if a.structField() != "" {
+		_, t, _ := c.structFieldOrdinal(a)
+		c.w(structFieldStoreConvert(t))
+		c.structFieldSeek(a)
+		c.w("StructCursorFieldSet ")
+		return nil
 	}
 	c.w(strconv.Itoa(c.slots[a.Name]), " L! ")
 	return nil

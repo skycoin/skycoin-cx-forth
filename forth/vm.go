@@ -118,6 +118,9 @@ type VM struct {
 	structTypes        []structTypeEntry
 	structDefineOpen   bool
 	structDefineFields []AtomicType
+
+	structCursorRef     Cell
+	structCursorOrdinal int32
 }
 
 // Sizes sets the fixed space of a VM, in cells for the stacks, locals, data
@@ -477,6 +480,7 @@ func (vm *VM) Restore(m Mark) {
 	vm.lits = vm.lits[:m.lits]
 	vm.strs = vm.strs[:min(m.strs, len(vm.strs))]
 	vm.here, vm.dp = m.here, m.dp
+	vm.structCursorClose(m.structTop)
 	vm.structTypes = vm.structTypes[:m.structTypes]
 	vm.structTop = m.structTop
 	vm.reset()

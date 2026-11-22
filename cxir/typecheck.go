@@ -25,6 +25,8 @@ func (t Type) AtomicType() (forth.AtomicType, bool) {
 		return forth.AtomicTypeString, true
 	case TRI:
 		return forth.AtomicTypeTernary, true
+	case TypeStruct:
+		return forth.AtomicTypeStructRef, true
 	}
 	return 0, false
 }
@@ -39,20 +41,24 @@ func TypeName(t Type) string {
 
 func typeNumeric(t Type) bool { return t == I32 || t == I64 || t == F32 || t == F64 }
 
-// typeSignatures indexes a program's functions by name for call checks.
-func typeSignatures(p *Program) map[string]*Function {
-	m := make(map[string]*Function, len(p.Functions))
-	for i := range p.Functions {
-		m[p.Functions[i].Name] = &p.Functions[i]
-	}
-	return m
-}
-
 // typeOfArg returns the type of a, checking a variable against its
 // declaration.
 func (c *fnCtx) typeOfArg(a Arg) (Type, error) {
 	if a.Lit {
+		if a.Type == TypeStruct {
+			return 0, errors.New("a struct cannot be a literal")
+		}
 		return a.Type, nil
+	}
+	if a.structField() != "" {
+		_, t, err := c.structFieldOrdinal(a)
+		if err != nil {
+			return 0, err
+		}
+		if a.Type != 0 && a.Type != t {
+			return 0, errors.New("type error: " + a.Name + " is " + TypeName(t) + ", used as " + TypeName(a.Type))
+		}
+		return t, nil
 	}
 	t, ok := c.types[a.Name]
 	if !ok {
@@ -78,6 +84,11 @@ func (c *fnCtx) typeCheckOperator(e *Expr) error {
 	out, err := c.typeOfArg(e.Outputs[0])
 	if err != nil {
 		return err
+	}
+	for _, x := range append(in, out) {
+		if x == TypeStruct {
+			return errors.New("type error: operators take no whole struct, use its fields")
+		}
 	}
 	t := in[0]
 	same := true
@@ -144,7 +155,7 @@ func (c *fnCtx) typeCheckJmp(e *Expr) error {
 // typeCheckCall matches a call against the function it calls. Host words
 // declare no types, so their calls are not checked.
 func (c *fnCtx) typeCheckCall(e *Expr) error {
-	f := c.sigs[e.Call]
+	f := c.index.function(e.Call)
 	if e.Op != OpCall || f == nil {
 		return nil
 	}
@@ -157,7 +168,7 @@ func (c *fnCtx) typeCheckCall(e *Expr) error {
 			if err != nil {
 				return err
 			}
-			if t != params[i].Type {
+			if t != params[i].Type || (t == TypeStruct && a.structField() == "" && c.structNames[a.Name] != params[i].structName()) {
 				return errors.New("type error: " + e.Call + " takes " + TypeName(params[i].Type) +
 					" for " + params[i].Name + ", got " + TypeName(t))
 			}
