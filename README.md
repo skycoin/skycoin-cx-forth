@@ -9,6 +9,13 @@ microcontrollers.
   string).
 - `cxir/` holds the CX IR subset and its translator to Forth words.
 - `cmd/cxforth` is the host REPL. `cmd/cxforth-esp32` is a UART REPL for ESP32.
+- `host/` holds the words a program uses to reach the world outside the VM:
+  `net.request`, `kv.get`, `gpio.set`, `json.get` and the rest.
+- `agent/` is a small chat agent written as CX IR, after
+  [zclaw](https://github.com/tnm/zclaw).
+- `wire/` is the encrypted UDP protocol the agent uses to reach
+  `cmd/cxforth-server`, which talks to Telegram and the LLM and holds their
+  credentials.
 
 ## Ternary logic
 
@@ -34,6 +41,24 @@ tinygo build -target=esp32c3-generic ./cmd/cxforth-esp32
 
 Try the REPL in the browser at https://skycoin.github.io/skycoin-cx-forth/
 (`scripts/build-pages.sh` builds it from `cmd/cxforth-wasm`).
+
+## Chat agent
+
+The agent polls Telegram, asks an LLM with a few tools (gpio_write,
+gpio_read, memory_set, memory_get, get_time), runs the tool calls and sends
+the reply. It never touches HTTPS. Each request goes to cxforth-server in UDP
+datagrams sealed with XChaCha20-Poly1305 under a pre-shared key, and the
+server makes the real call. See `wire/wire.go` for the datagram format.
+
+Try it against fake Telegram and LLM endpoints:
+
+```
+export CXFORTH_KEY=$(go run ./cmd/cxforth-server -genkey)
+go run ./cmd/cxforth -agent &
+go run ./cmd/cxforth-server -mock -say 'turn the led on' -say 'remember color blue'
+```
+
+For real services, run the server with `TG_TOKEN`, `LLM_URL` and `LLM_KEY` set.
 
 ## ESP32 in QEMU
 
