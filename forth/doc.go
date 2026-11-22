@@ -74,6 +74,30 @@
 //
 // Mark and Restore forget struct types and instances made after the mark.
 //
+// # The struct cursor
+//
+// The cursor walks the ordinals of one instance. It is VM state of its own,
+// beside the registers and the stack. StructCursorNext at the last ordinal
+// and StructCursorPrevious at ordinal 0 stay put and push FALSE, so a loop
+// over every field is BEGIN ... StructCursorNext NOT UNTIL.
+//
+//	StructCursorOpen         ( ref -- )   ordinal 0 of ref
+//	StructCursorFirst        ( -- )
+//	StructCursorLast         ( -- )
+//	StructCursorNext         ( -- moved )
+//	StructCursorPrevious     ( -- moved )
+//	StructCursorOrdinal      ( -- n )
+//	StructCursorOrdinalSet   ( n -- )
+//	StructCursorOrdinalType  ( -- t )
+//	StructCursorFieldGet     ( -- x )
+//	StructCursorFieldSet     ( x -- )     x must have the ordinal's type
+//	StructUnpack             ( ref -- x0 ... xn-1 )  ordinal 0 deepest
+//	StructSpaceTop           ( -- n )
+//	StructSpaceRelease       ( n -- )     frees instances made since n
+//
+// The struct table can be read with the cursor too, starting from
+// StructTypeDescriptorRef.
+//
 // Word names are matched without regard to case and keep the case they were
 // defined with.
 //

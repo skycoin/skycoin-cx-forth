@@ -15,10 +15,22 @@ func Load(vm *forth.VM, p *Program) error {
 	if err != nil {
 		return err
 	}
-	sigs := typeSignatures(p)
+	index, err := programIndexBuild(p)
+	if err != nil {
+		return err
+	}
+	if len(p.Structs) > 0 {
+		var b strings.Builder
+		for i := range p.Structs {
+			structDefinitionWrite(&b, &p.Structs[i])
+		}
+		if err := vm.Interpret(b.String()); err != nil {
+			return err
+		}
+	}
 	for _, f := range order {
 		var b strings.Builder
-		if err := translateFunc(&b, f, sigs); err != nil {
+		if err := translateFunc(&b, f, index); err != nil {
 			return errors.New(f.Name + ": " + err.Error())
 		}
 		if err := vm.Interpret(b.String()); err != nil {

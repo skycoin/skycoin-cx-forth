@@ -9,6 +9,7 @@
 //	Expr     ~ cx/ast/ast_cxatomicoperator.go CXAtomicOperator (Inputs, Outputs, Operator, Label, ThenLines, ElseLines)
 //	Arg      ~ cx/ast/ast_cxargument.go CXArgument (name, type, literal value)
 //	Type     ~ cx/types/types.go Code (BOOL I32 I64 F32 F64 STR)
+//	StructDefinition ~ cx/ast/ast_cxstruct.go CXStruct (Name, Fields)
 //	Op       ~ cx/constants/opcodes.go OP_* (jumps, comparisons, arithmetic, bool ops)
 //
 // Jumps keep CX's relative line offsets. cx/opcodes/op_misc.go opJmp adds
@@ -20,6 +21,13 @@
 // true, false and null, and an Arg literal may be Null for any type. A JMP
 // whose condition is null goes to NullLines when HasNull is set, otherwise
 // it takes the ElseLines path.
+//
+// A struct variable, of type TypeStruct, holds a StructRef to an instance
+// in the VM struct space, and an Arg named p.x is field x of p. Each
+// StructDefinition becomes a VM struct type. A function makes an instance
+// for each struct local and output, and frees them on return when it
+// returns no struct. Struct arguments pass the ref, so a callee shares its
+// caller's instance. Fields are atomic, nested structs are not supported.
 //
 // OpHost calls a word the host program defines, such as net.request. It
 // is how CX code reaches anything outside the VM, the way CX itself calls
@@ -38,6 +46,7 @@ const (
 	F64
 	STR
 	TRI
+	TypeStruct // a CX struct instance, the variable's Arg.S names the struct
 )
 
 // Op is an operator. The names follow cx/constants/opcodes.go.
@@ -78,7 +87,7 @@ type Arg struct {
 	Null bool // literal null, extension
 	I    int64
 	F    float64
-	S    string
+	S    string // a str literal, or the struct of a TypeStruct variable
 	B    bool
 }
 
@@ -128,9 +137,11 @@ type Function struct {
 	Exprs   []Expr
 }
 
-// Program is a list of functions. main is the entry point.
+// Program is a list of functions and the structs they use. main is the
+// entry point.
 type Program struct {
 	Functions []Function
+	Structs   []StructDefinition
 }
 
 // Op1 builds out = op(in...).
