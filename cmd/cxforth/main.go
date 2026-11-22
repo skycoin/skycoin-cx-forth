@@ -6,6 +6,8 @@
 //	cxforth -cx fib         run a built in CX IR example
 //	cxforth -cx fib -emit   print the Forth the example translates to
 //	cxforth -list           list the examples
+//	cxforth -agent          run the chat agent against cxforth-server, key in CXFORTH_KEY
+//	cxforth -agent -emit    print the Forth the agent translates to
 package main
 
 import (
@@ -24,7 +26,17 @@ func main() {
 	emit := flag.Bool("emit", false, "with -cx, print the translated Forth instead of running it")
 	list := flag.Bool("list", false, "list the CX IR examples")
 	quiet := flag.Bool("q", false, "REPL without the ok prompt")
+	runAgent := flag.Bool("agent", false, "run the chat agent")
+	server := flag.String("server", "127.0.0.1:7400", "with -agent, the cxforth-server UDP address")
 	flag.Parse()
+
+	if *runAgent {
+		if err := agentMain(*server, *emit); err != nil {
+			fmt.Fprintln(os.Stderr, "cxforth:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *list {
 		for _, ex := range cxir.Examples {
@@ -34,7 +46,7 @@ func main() {
 	}
 
 	out := bufio.NewWriter(os.Stdout)
-	defer out.Flush()
+	defer func() { _ = out.Flush() }()
 	vm := forth.New(out)
 	for _, path := range flag.Args() {
 		src, err := os.ReadFile(path)
@@ -56,7 +68,7 @@ func main() {
 			if err != nil {
 				fatal(out, err)
 			}
-			fmt.Fprint(out, src)
+			_, _ = fmt.Fprint(out, src)
 			return
 		}
 		if err := cxir.Load(vm, &ex.Program); err != nil {
@@ -71,18 +83,18 @@ func main() {
 		if err := vm.Interpret(*eval); err != nil {
 			fatal(out, err)
 		}
-		fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out)
 		return
 	}
 
 	sc := bufio.NewScanner(os.Stdin)
 	for sc.Scan() {
 		if err := vm.Interpret(sc.Text()); err != nil {
-			fmt.Fprintf(out, " error: %v\n", err)
+			_, _ = fmt.Fprintf(out, " error: %v\n", err)
 		} else if !*quiet {
-			fmt.Fprintln(out, " ok")
+			_, _ = fmt.Fprintln(out, " ok")
 		}
-		out.Flush()
+		_ = out.Flush()
 	}
 }
 
@@ -96,7 +108,7 @@ func find(name string) *cxir.Example {
 }
 
 func fatal(out *bufio.Writer, err error) {
-	out.Flush()
+	_ = out.Flush()
 	fmt.Fprintln(os.Stderr, "cxforth:", err)
 	os.Exit(1)
 }

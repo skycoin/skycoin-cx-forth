@@ -121,3 +121,13 @@ func primSQuoteEsc(vm *VM) {
 	}
 	vm.Push(s)
 }
+
+// Usage reports how much of the VM's fixed space a program takes.
+type Usage struct {
+	Code, Words, Literals, Strings int
+}
+
+// Usage returns the space used so far.
+func (vm *VM) Usage() Usage {
+	return Usage{int(vm.here), len(vm.words), len(vm.lits), len(vm.strs)}
+}
