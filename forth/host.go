@@ -63,10 +63,12 @@ func (vm *VM) collect() {
 		}
 	}
 	n := int64(0)
+	vm.strSize = 0
 	for i, l := range live {
 		if l == 0 {
 			live[i] = n
 			vm.strs[n] = vm.strs[i]
+			vm.strSize += len(vm.strs[n])
 			n++
 		}
 	}
@@ -82,6 +84,7 @@ func (vm *VM) collect() {
 		}
 	}
 	vm.gcAt = max(StringsGC, 2*int(n))
+	vm.gcSize = max(StringsGCBytes, 2*vm.strSize)
 }
 
 // primSQuoteEsc is S\" from Forth 2012 with the escapes \" \\ \n \r \t.
@@ -125,9 +128,11 @@ func primSQuoteEsc(vm *VM) {
 // Usage reports how much of the VM's fixed space a program takes.
 type Usage struct {
 	Code, Words, Literals, Strings int
+	StringBytes                    int
+	CodeMax                        int
 }
 
 // Usage returns the space used so far.
 func (vm *VM) Usage() Usage {
-	return Usage{int(vm.here), len(vm.words), len(vm.lits), len(vm.strs)}
+	return Usage{int(vm.here), len(vm.words), len(vm.lits), len(vm.strs), vm.strSize, len(vm.code)}
 }

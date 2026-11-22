@@ -1,6 +1,9 @@
 package forth
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // Immediate words. They run while compiling and lay down threaded code.
 var compilePrims = []prim{
@@ -248,7 +251,7 @@ func primThen(vm *VM) {
 func primDotQuote(vm *VM) {
 	s := vm.parseTo('"')
 	if vm.compiling {
-		vm.emitLit(vm.intern(s))
+		vm.emitLit(vm.intern(strings.Clone(s)))
 		vm.emit(opPrim, vm.primIndex("TYPE"))
 		return
 	}
@@ -258,7 +261,7 @@ func primDotQuote(vm *VM) {
 func primSQuote(vm *VM) {
 	s := vm.parseTo('"')
 	if vm.compiling {
-		vm.emitLit(vm.intern(s))
+		vm.emitLit(vm.intern(strings.Clone(s)))
 		return
 	}
 	vm.Push(vm.intern(s))

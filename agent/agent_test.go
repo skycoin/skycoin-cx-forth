@@ -98,7 +98,7 @@ func TestAgent(t *testing.T) {
 	}
 	t.Logf("console:\n%s", out.String())
 	u := vm.Usage()
-	t.Logf("code %d/%d instructions, %d words, %d literals, %d strings", u.Code, forth.CodeSize, u.Words, u.Literals, u.Strings)
+	t.Logf("code %d/%d instructions, %d words, %d literals, %d strings", u.Code, u.CodeMax, u.Words, u.Literals, u.Strings)
 }
 
 // The round trip per message on the desktop, mock services included.
