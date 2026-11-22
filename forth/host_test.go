@@ -81,3 +81,16 @@ func TestStringCollectMark(t *testing.T) {
 		t.Fatalf("output %q", b.String())
 	}
 }
+
+// Large strings trigger compaction by size, not only by count.
+func TestStringCollectBytes(t *testing.T) {
+	vm := New(nil)
+	big := strings.Repeat("j", 4096)
+	vm.Define("big", func(vm *VM) { vm.PushString(big) })
+	if err := vm.Interpret(`: T 0 BEGIN big DROP 1+ DUP 2000 = UNTIL DROP ; T`); err != nil {
+		t.Fatal(err)
+	}
+	if u := vm.Usage(); u.StringBytes > 2*StringsGCBytes+len(big) {
+		t.Fatalf("string pool holds %d bytes", u.StringBytes)
+	}
+}

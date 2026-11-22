@@ -389,7 +389,7 @@ func (vm *VM) addr() int64 {
 	if vm.err != nil {
 		return -1
 	}
-	if a.T != TInt || a.V < 0 || a.V >= MemSize {
+	if a.T != TInt || a.V < 0 || a.V >= int64(len(vm.mem)) {
 		vm.fail("bad address")
 		return -1
 	}
@@ -397,7 +397,7 @@ func (vm *VM) addr() int64 {
 }
 
 func (vm *VM) allot(n int64) {
-	if vm.dp+n > MemSize || vm.dp+n < 0 {
+	if vm.dp+n > int64(len(vm.mem)) || vm.dp+n < 0 {
 		vm.fail("memory full")
 		return
 	}
@@ -445,7 +445,7 @@ func primWords(vm *VM) {
 // primFrame ( n -- ) opens a frame of n zeroed locals.
 func primFrame(vm *VM) {
 	n := int(vm.Pop().V)
-	if vm.fp >= FramesSize || vm.lp+n > LocalsSize || n < 0 {
+	if vm.fp >= len(vm.fs) || vm.lp+n > len(vm.ls) || n < 0 {
 		vm.fail("locals overflow")
 		return
 	}

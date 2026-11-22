@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Fixed sizes, chosen to fit comfortably in ESP32 DRAM.
+// Default sizes, chosen to fit comfortably in ESP32 DRAM.
 const (
 	StackSize  = 256
 	RStackSize = 256
@@ -16,6 +16,8 @@ const (
 	CodeSize   = 4096
 	WordsMax   = 512
 	StringsGC  = 256 // string pool length that first triggers a compaction
+	// StringsGCBytes is the string pool size that first triggers a compaction.
+	StringsGCBytes = 16 << 10
 )
 
 // Error is a VM error. It is a plain type so no fmt is needed.
@@ -74,18 +76,18 @@ type labelFix struct{ pos, label int32 }
 
 // VM is a Forth machine with tagged cells.
 type VM struct {
-	ds    [StackSize]Cell
+	ds    []Cell
 	sp    int
-	rs    [RStackSize]Cell
+	rs    []Cell
 	rp    int
-	ls    [LocalsSize]Cell
+	ls    []Cell
 	lp    int
-	fs    [FramesSize]int32
+	fs    []int32
 	fp    int
 	frame int32
-	mem   [MemSize]Cell
+	mem   []Cell
 	dp    int64
-	code  [CodeSize]Instr
+	code  []Instr
 	here  int32
 	words []Word
 	lits  []Cell
@@ -104,12 +106,36 @@ type VM struct {
 	lfix      []labelFix
 	saveHere  int32
 
-	gcAt int // string pool length that triggers the next compaction
+	gcAt    int // string pool length that triggers the next compaction
+	strSize int // bytes held by the string pool
+	gcSize  int // strSize that triggers the next compaction
 }
 
-// New returns a VM writing output to out.
-func New(out io.Writer) *VM {
-	vm := &VM{out: out, base: 10, words: make([]Word, 0, 128), obuf: make([]byte, 0, 64), gcAt: StringsGC}
+// Sizes sets the fixed space of a VM, in cells for the stacks, locals and
+// data memory and in instructions for code. A zero field takes the default.
+type Sizes struct {
+	Stack, RStack, Locals, Frames, Mem, Code int
+}
+
+// New returns a VM with the default sizes writing output to out.
+func New(out io.Writer) *VM { return NewSized(out, Sizes{}) }
+
+// NewSized returns a VM with the sizes in s.
+func NewSized(out io.Writer, s Sizes) *VM {
+	or := func(n, def int) int {
+		if n > 0 {
+			return n
+		}
+		return def
+	}
+	vm := &VM{out: out, base: 10, words: make([]Word, 0, 128), obuf: make([]byte, 0, 64), gcAt: StringsGC, gcSize: StringsGCBytes,
+		ds:   make([]Cell, or(s.Stack, StackSize)),
+		rs:   make([]Cell, or(s.RStack, RStackSize)),
+		ls:   make([]Cell, or(s.Locals, LocalsSize)),
+		fs:   make([]int32, or(s.Frames, FramesSize)),
+		mem:  make([]Cell, or(s.Mem, MemSize)),
+		code: make([]Instr, or(s.Code, CodeSize)),
+	}
 	for i := range prims {
 		vm.words = append(vm.words, Word{Name: prims[i].name, Prim: int16(i), Imm: prims[i].imm})
 	}
@@ -126,7 +152,7 @@ func (vm *VM) failWord(msg, w string) { vm.fail(msg + ": " + w) }
 
 // Push pushes a cell onto the data stack.
 func (vm *VM) Push(c Cell) {
-	if vm.sp >= StackSize {
+	if vm.sp >= len(vm.ds) {
 		vm.fail("stack overflow")
 		return
 	}
@@ -151,7 +177,7 @@ func (vm *VM) Depth() int { return vm.sp }
 func (vm *VM) Stack() []Cell { return append([]Cell(nil), vm.ds[:vm.sp]...) }
 
 func (vm *VM) rpush(c Cell) {
-	if vm.rp >= RStackSize {
+	if vm.rp >= len(vm.rs) {
 		vm.fail("return stack overflow")
 		return
 	}
@@ -180,6 +206,7 @@ func (vm *VM) writeString(s string) {
 }
 
 func (vm *VM) intern(s string) Cell {
+	vm.strSize += len(s)
 	vm.strs = append(vm.strs, s)
 	return Cell{TStr, int64(len(vm.strs) - 1)}
 }
@@ -195,7 +222,7 @@ func (vm *VM) str(c Cell) string {
 func (vm *VM) String(c Cell) string { return vm.str(c) }
 
 func (vm *VM) emit(op uint8, a int32) int32 {
-	if vm.here >= CodeSize {
+	if int(vm.here) >= len(vm.code) {
 		vm.fail("code space full")
 		return vm.here
 	}
@@ -239,7 +266,7 @@ func (vm *VM) run(xt int32) {
 			vm.fail("bad instruction pointer")
 			break
 		}
-		if len(vm.strs) >= vm.gcAt {
+		if len(vm.strs) >= vm.gcAt || vm.strSize >= vm.gcSize {
 			vm.collect()
 		}
 		in := vm.code[ip]
@@ -361,7 +388,7 @@ func (vm *VM) number(tok string) (Cell, bool) {
 func (vm *VM) Interpret(src string) error {
 	vm.src, vm.pos, vm.err = src, 0, nil
 	for vm.err == nil {
-		if len(vm.strs) >= vm.gcAt {
+		if len(vm.strs) >= vm.gcAt || vm.strSize >= vm.gcSize {
 			vm.collect()
 		}
 		tok := vm.next()
