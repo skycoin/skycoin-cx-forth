@@ -5,8 +5,8 @@ A small Forth VM in Go that runs a base subset of CX IR, with three-valued
 microcontrollers.
 
 - `forth/` is the VM: fixed-size stacks and memory, colon definitions,
-  IF/ELSE/THEN, loops, variables, and tagged cells (int, f64, f32, ternary,
-  string).
+  IF/ELSE/THEN, loops, variables, cells tagged with an atomic type, and
+  three typed registers.
 - `cxir/` holds the CX IR subset and its translator to Forth words.
 - `cmd/cxforth` is the host REPL. `cmd/cxforth-esp32` is a UART REPL for ESP32.
 - `host/` holds the words a program uses to reach the world outside the VM:
@@ -16,6 +16,24 @@ microcontrollers.
 - `wire/` is the encrypted UDP protocol the agent uses to reach
   `cmd/cxforth-server`, which talks to Telegram and the LLM and holds their
   credentials.
+
+## Atomic types and registers
+
+Every cell carries an AtomicType: Int8 to Int64, Uint8 to Uint64, Float32,
+Float64, Bool, String, Ternary or StructRef. There are three registers, Left,
+Middle and Right. One is the focus, and the Register words act on it. Each
+register has a declared type, and a value moved into it from the stack must
+have that type. The CX IR translator checks types before it emits any Forth.
+
+```
+AtomicTypeInt32 RegisterTypeSet
+2147483647 AtomicTypeInt32 AtomicTypeConvert RegisterFocusPopFromStack
+1 AtomicTypeInt32 AtomicTypeConvert RegisterFocusAdd
+RegisterFocusPushToStack .    \ -2147483648
+```
+
+New words follow the naming rule in AGENTS.md. See `forth/doc.go` for the
+word list.
 
 ## Ternary logic
 

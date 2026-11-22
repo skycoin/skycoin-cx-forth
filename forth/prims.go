@@ -169,6 +169,8 @@ func init() {
 		{"I", func(vm *VM) { vm.loopIndex(1) }, false},
 		{"J", func(vm *VM) { vm.loopIndex(3) }, false},
 	}
+	prims = append(prims, atomicTypePrims()...)
+	prims = append(prims, registerPrims()...)
 	prims = append(prims, compilePrims...)
 }
 
@@ -216,7 +218,9 @@ func primAbs(vm *VM) {
 }
 
 // arith applies a binary arithmetic operator. Ternary operands, NULL
-// included, are an error: a truth value is not a number.
+// included, are an error: a truth value is not a number. Integer operands
+// must share a type, except that an Int64 takes the other operand's type,
+// and the result wraps to that type's width.
 func (vm *VM) arith(op byte) {
 	b, a := vm.Pop(), vm.Pop()
 	if vm.err != nil {
@@ -230,7 +234,7 @@ func (vm *VM) arith(op byte) {
 		vm.fail("arithmetic on a ternary value")
 		return
 	}
-	if a.T == TStr || b.T == TStr {
+	if !atomicTypeNumeric(a.T) || !atomicTypeNumeric(b.T) {
 		vm.fail("type error in arithmetic")
 		return
 	}
@@ -260,6 +264,11 @@ func (vm *VM) arith(op byte) {
 		}
 		return
 	}
+	t, ok := atomicTypeIntegerResult(a.T, b.T)
+	if !ok {
+		vm.fail("type error: " + AtomicTypeName(a.T) + " and " + AtomicTypeName(b.T) + " in arithmetic")
+		return
+	}
 	x, y := a.V, b.V
 	var r int64
 	switch op {
@@ -270,21 +279,26 @@ func (vm *VM) arith(op byte) {
 	case '*':
 		r = x * y
 	case '/', '%':
-		if y == 0 {
+		switch {
+		case y == 0:
 			vm.fail("division by zero")
 			return
-		}
-		if op == '/' {
+		case atomicTypeUnsigned(t) && op == '/':
+			r = int64(uint64(x) / uint64(y))
+		case atomicTypeUnsigned(t):
+			r = int64(uint64(x) % uint64(y))
+		case op == '/':
 			r = x / y
-		} else {
+		default:
 			r = x % y
 		}
-	case 'm':
-		r = min(x, y)
-	case 'M':
-		r = max(x, y)
+	case 'm', 'M':
+		r = x
+		if c := atomicTypeCompareInteger(Cell{t, x}, Cell{t, y}); (c > 0) == (op == 'm') && c != 0 {
+			r = y
+		}
 	}
-	vm.Push(Int(r))
+	vm.Push(atomicTypeWrap(t, r))
 }
 
 // compare pushes a ternary result. Any null operand gives null.
@@ -300,34 +314,18 @@ func (vm *VM) compare(op byte) {
 	var c int
 	switch {
 	case a.T == TStr && b.T == TStr:
-		x, y := vm.str(a), vm.str(b)
-		switch {
-		case x < y:
-			c = -1
-		case x > y:
-			c = 1
-		}
-	case a.T == TTri || b.T == TTri:
+		c = compareOrdered(vm.str(a), vm.str(b))
+	case a.T == TTri || b.T == TTri, a.T == AtomicTypeBool || b.T == AtomicTypeBool,
+		a.T == AtomicTypeStructRef || b.T == AtomicTypeStructRef:
 		if a.T != b.T {
 			vm.fail("type error in comparison")
 			return
 		}
-		c = int(a.V - b.V)
+		c = compareOrdered(a.V, b.V)
 	case a.IsFloat() || b.IsFloat():
-		x, y := a.Float(), b.Float()
-		switch {
-		case x < y:
-			c = -1
-		case x > y:
-			c = 1
-		}
+		c = compareOrdered(a.Float(), b.Float())
 	default:
-		switch {
-		case a.V < b.V:
-			c = -1
-		case a.V > b.V:
-			c = 1
-		}
+		c = atomicTypeCompareInteger(a, b)
 	}
 	var r bool
 	switch op {

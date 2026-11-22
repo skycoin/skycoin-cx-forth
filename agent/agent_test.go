@@ -47,6 +47,14 @@ func TestAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	p, err := Program()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cxir.Translate(p); err != nil {
+		t.Fatalf("the agent does not type check: %v", err)
+	}
+
 	pins := host.MemPins{}
 	env := &host.Env{
 		Net:   client,

@@ -109,6 +109,9 @@ type VM struct {
 	gcAt    int // string pool length that triggers the next compaction
 	strSize int // bytes held by the string pool
 	gcSize  int // strSize that triggers the next compaction
+
+	registers     [RegisterCount]Cell
+	registerFocus uint8
 }
 
 // Sizes sets the fixed space of a VM, in cells for the stacks, locals and
@@ -238,9 +241,8 @@ func (vm *VM) emitLit(c Cell) {
 }
 
 func (vm *VM) find(name string) int {
-	u := strings.ToUpper(name)
 	for i := len(vm.words) - 1; i >= 0; i-- {
-		if vm.words[i].Name == u {
+		if strings.EqualFold(vm.words[i].Name, name) {
 			return i
 		}
 	}
@@ -252,7 +254,7 @@ func (vm *VM) addWord(name string, xt int32) int {
 		vm.fail("dictionary full")
 		return -1
 	}
-	vm.words = append(vm.words, Word{Name: strings.ToUpper(name), Prim: -1, XT: xt})
+	vm.words = append(vm.words, Word{Name: strings.Clone(name), Prim: -1, XT: xt})
 	return len(vm.words) - 1
 }
 

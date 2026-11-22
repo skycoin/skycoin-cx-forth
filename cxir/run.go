@@ -15,8 +15,13 @@ func Load(vm *forth.VM, p *Program) error {
 	if err != nil {
 		return err
 	}
+	sigs := typeSignatures(p)
 	for _, f := range order {
-		if err := LoadFunc(vm, f); err != nil {
+		var b strings.Builder
+		if err := translateFunc(&b, f, sigs); err != nil {
+			return errors.New(f.Name + ": " + err.Error())
+		}
+		if err := vm.Interpret(b.String()); err != nil {
 			return err
 		}
 	}
@@ -24,11 +29,12 @@ func Load(vm *forth.VM, p *Program) error {
 }
 
 // LoadFunc translates one function and compiles it into vm. The functions
-// it calls must be loaded already. A caller short of memory can build and
-// load a program a function at a time with it.
+// it calls must be loaded already, and its calls are not type
+// checked. A caller short of memory can build and load a program a function
+// at a time with it, after checking the whole program once with Translate.
 func LoadFunc(vm *forth.VM, f *Function) error {
 	var b strings.Builder
-	if err := translateFunc(&b, f); err != nil {
+	if err := translateFunc(&b, f, nil); err != nil {
 		return errors.New(f.Name + ": " + err.Error())
 	}
 	return vm.Interpret(b.String())

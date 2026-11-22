@@ -12,14 +12,19 @@ func WordName(fn string) string { return "CX-" + fn }
 // Translate turns p into Forth source. Each CX function becomes one colon
 // definition with a frame of locals and a numbered label per IR line.
 // Running the word CX-main runs the program.
+//
+// It checks types as it goes. The operands of an operator share one type
+// that the operator takes, the output has the type it gives, a jump tests a
+// Bool or Ternary, and a call matches the function it calls.
 func Translate(p *Program) (string, error) {
 	order, err := callOrder(p)
 	if err != nil {
 		return "", err
 	}
+	sigs := typeSignatures(p)
 	var b strings.Builder
 	for _, f := range order {
-		if err := translateFunc(&b, f); err != nil {
+		if err := translateFunc(&b, f, sigs); err != nil {
 			return "", errors.New(f.Name + ": " + err.Error())
 		}
 	}
@@ -74,11 +79,14 @@ func callOrder(p *Program) ([]*Function, error) {
 type fnCtx struct {
 	b     *strings.Builder
 	slots map[string]int
+	types map[string]Type
+	sigs  map[string]*Function
 	n     int
 }
 
-func translateFunc(b *strings.Builder, f *Function) error {
-	c := &fnCtx{b: b, slots: map[string]int{}, n: len(f.Exprs)}
+// translateFunc writes f. With sigs nil, calls are not type checked.
+func translateFunc(b *strings.Builder, f *Function, sigs map[string]*Function) error {
+	c := &fnCtx{b: b, slots: map[string]int{}, types: map[string]Type{}, sigs: sigs, n: len(f.Exprs)}
 	vars := make([]Arg, 0, len(f.Inputs)+len(f.Outputs)+len(f.Locals))
 	vars = append(vars, f.Inputs...)
 	vars = append(vars, f.Outputs...)
@@ -87,7 +95,11 @@ func translateFunc(b *strings.Builder, f *Function) error {
 		if _, dup := c.slots[v.Name]; dup || v.Name == "" {
 			return errors.New("bad or duplicate variable " + strconv.Quote(v.Name))
 		}
+		if _, ok := v.Type.AtomicType(); !ok {
+			return errors.New("variable " + v.Name + " has no type")
+		}
 		c.slots[v.Name] = i
+		c.types[v.Name] = v.Type
 	}
 
 	c.w(": ", WordName(f.Name), "\n  ", strconv.Itoa(len(vars)), " FRAME")
@@ -139,11 +151,10 @@ func (c *fnCtx) w(s ...string) {
 
 func (c *fnCtx) push(a Arg) error {
 	if !a.Lit {
-		i, ok := c.slots[a.Name]
-		if !ok {
-			return errors.New("undefined variable " + a.Name)
+		if _, err := c.typeOfArg(a); err != nil {
+			return err
 		}
-		c.w(strconv.Itoa(i), " L@ ")
+		c.w(strconv.Itoa(c.slots[a.Name]), " L@ ")
 		return nil
 	}
 	if a.Null {
@@ -180,11 +191,10 @@ func (c *fnCtx) store(a Arg) error {
 	if a.Lit {
 		return errors.New("cannot assign to a literal")
 	}
-	i, ok := c.slots[a.Name]
-	if !ok {
-		return errors.New("undefined variable " + a.Name)
+	if _, err := c.typeOfArg(a); err != nil {
+		return err
 	}
-	c.w(strconv.Itoa(i), " L! ")
+	c.w(strconv.Itoa(c.slots[a.Name]), " L! ")
 	return nil
 }
 
@@ -225,6 +235,9 @@ func (c *fnCtx) expr(line int, e *Expr) error {
 		if len(e.Inputs) != 1 {
 			return errors.New("jmp needs one condition")
 		}
+		if err := c.typeCheckJmp(e); err != nil {
+			return err
+		}
 		t, err1 := c.target(line, e.ThenLines)
 		f, err2 := c.target(line, e.ElseLines)
 		n := f
@@ -260,6 +273,9 @@ func (c *fnCtx) expr(line int, e *Expr) error {
 		c.w("PRINTLN")
 		return nil
 	case OpCall, OpHost:
+		if err := c.typeCheckCall(e); err != nil {
+			return err
+		}
 		for _, a := range e.Inputs {
 			if err := c.push(a); err != nil {
 				return err
@@ -285,6 +301,9 @@ func (c *fnCtx) expr(line int, e *Expr) error {
 	}
 	if len(e.Inputs) != n || len(e.Outputs) != 1 {
 		return errors.New("wrong number of operands")
+	}
+	if err := c.typeCheckOperator(e); err != nil {
+		return err
 	}
 	for _, a := range e.Inputs {
 		if err := c.push(a); err != nil {
