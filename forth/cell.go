@@ -5,18 +5,6 @@ import (
 	"strconv"
 )
 
-// Tag is the type of a cell.
-type Tag uint8
-
-// Cell tags.
-const (
-	TInt Tag = iota // 64 bit signed integer, also used for addresses and flags
-	TF64            // float64 held in V as raw bits
-	TF32            // float32 value widened to float64 bits in V
-	TTri            // ternary value, V is one of False, Null, True
-	TStr            // index into the VM string pool
-)
-
 // Ternary values in balanced form, so Kleene AND is min, OR is max
 // and NOT is negation.
 const (
@@ -27,7 +15,7 @@ const (
 
 // Cell is one stack or memory slot.
 type Cell struct {
-	T Tag
+	T AtomicType
 	V int64
 }
 
@@ -56,6 +44,8 @@ func (c Cell) Float() float64 {
 	switch c.T {
 	case TF64, TF32:
 		return math.Float64frombits(uint64(c.V))
+	case AtomicTypeUint64:
+		return float64(uint64(c.V))
 	}
 	return float64(c.V)
 }
@@ -106,6 +96,12 @@ func (vm *VM) appendCell(b []byte, c Cell) []byte {
 		return append(b, TriName(c.V)...)
 	case TStr:
 		return append(b, vm.str(c)...)
+	case AtomicTypeUint64:
+		return strconv.AppendUint(b, uint64(c.V), vm.base)
+	case AtomicTypeBool:
+		return strconv.AppendBool(b, c.V != 0)
+	case AtomicTypeStructRef:
+		return vm.appendStructRef(b, c)
 	}
 	return strconv.AppendInt(b, c.V, vm.base)
 }

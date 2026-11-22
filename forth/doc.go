@@ -6,10 +6,44 @@
 //
 // # Cells
 //
-// A cell carries a tag: integer, float64, float32, ternary or string. The
-// arithmetic words are polymorphic. Integer with integer stays integer, any
-// float makes the result a float. >I32 and >F32 narrow a value the way CX
-// i32 and f32 arithmetic does.
+// A cell carries an AtomicType: Int8, Int16, Int32, Int64, Uint8, Uint16,
+// Uint32, Uint64, Float32, Float64, Bool, String, Ternary or StructRef. A
+// literal is an Int64 or a Float64, and AtomicTypeConvert makes the others.
+// The arithmetic words are polymorphic. Integer operands must share a type,
+// except that an Int64 takes the type of the other operand, and the result
+// wraps to that type. Any float makes the result a float. >I32 and >F32
+// narrow a value the way CX i32 and f32 arithmetic does.
+//
+// The AtomicType words, with their stack effects:
+//
+//	AtomicTypeInt64 ... AtomicTypeStructRef  ( -- t )  one per type, t is its id
+//	AtomicTypeConvert  ( x t -- y )  NULL passes through
+//	AtomicTypeOf       ( x -- t )
+//	AtomicTypeNameOf   ( t -- s )   such as Int32
+//
+// # Registers
+//
+// There are three registers, Left, Middle and Right, and one of them is the
+// focus. The registers and the data stack are independent. Each register
+// holds one cell, whose type is the register's declared type. A new register
+// is the Int64 0 and Left is the focus.
+//
+//	RegisterFocusLeft, RegisterFocusMiddle, RegisterFocusRight  ( -- )
+//	RegisterFocusPushToStack   ( -- x )  copies the focus
+//	RegisterFocusPopFromStack  ( x -- )  x must have the focus type
+//	RegisterClear              ( -- )    the zero of the focus type
+//	RegisterTypeSet            ( t -- )  sets the type and clears
+//	RegisterTypeGet            ( -- t )
+//	RegisterFocusAdd, RegisterFocusSubtract, RegisterFocusMultiply,
+//	RegisterFocusDivide, RegisterFocusModulo  ( x -- )  focus = focus op x
+//	RegisterFocusNegate        ( -- )
+//
+// The typed words fail with a type error when an operand does not have the
+// focus type. The CX IR translator checks types before it emits any Forth,
+// so in translated code the run time checks are asserts.
+//
+// Word names are matched without regard to case and keep the case they were
+// defined with.
 //
 // # Ternary logic
 //

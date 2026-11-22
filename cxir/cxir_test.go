@@ -36,6 +36,16 @@ func TestTranslateErrors(t *testing.T) {
 		{main(Call("nope", nil)), "undefined function nope"},
 		{main(Op1(OpAdd, Int32(1), Int32(1), Int32(1))), "assign to a literal"},
 		{main(Host("a b", nil)), "bad host word"},
+		{main(Op1(OpAdd, Var("x", I32), Var("x", I32), Int64(1))), "type error: Int32, Int64 into Int32"},
+		{main(Op1(OpLt, Var("x", I32), Var("x", I32), Int32(1))), "want a Bool or Ternary result"},
+		{main(Op1(OpSub, Var("x", I32), Str("a"), Str("b"))), "type error"},
+		{main(Op1(OpBoolAnd, Var("x", I32), TriLit(true), Bool(true))), "want a Ternary result"},
+		{main(Jmp(Var("x", I32), 0, 0)), "jmp on Int32"},
+		{main(Print(Var("x", I64))), "x is Int32, used as Int64"},
+		{&Program{Functions: []Function{
+			{Name: "main", Exprs: []Expr{Call("f", nil, Int64(1))}},
+			{Name: "f", Inputs: []Arg{Var("n", I32)}},
+		}}, "f takes Int32 for n, got Int64"},
 		{&Program{Functions: []Function{
 			{Name: "main", Exprs: []Expr{Call("a", nil)}},
 			{Name: "a", Exprs: []Expr{Call("b", nil)}},
